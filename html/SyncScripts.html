@@ -1,0 +1,81 @@
+<script>
+(function () {
+  'use strict';
+
+  function callServer(functionName) {
+    const args = Array.prototype.slice.call(arguments, 1);
+    return new Promise(function (resolve, reject) {
+      const runner = google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(reject);
+      runner[functionName].apply(runner, args);
+    });
+  }
+
+  function unwrap(response) {
+    if (!response || response.ok !== true) {
+      const error = response && response.error ? response.error : {};
+      throw new Error(error.message || 'The server returned an invalid response.');
+    }
+    return response.data;
+  }
+
+  function showSnack(message) {
+    const snackbar = document.getElementById('snackbar');
+    if (!snackbar) return;
+    snackbar.textContent = message;
+    snackbar.hidden = false;
+    window.setTimeout(function () { snackbar.hidden = true; }, 7000);
+  }
+
+  function setButtonBusy(button, busy) {
+    if (!button) return;
+    if (busy) {
+      button.dataset.previousHtml = button.innerHTML;
+      button.disabled = true;
+      button.innerHTML = '<span class="spinner" aria-hidden="true"></span>Syncing…';
+    } else {
+      button.disabled = false;
+      if (button.dataset.previousHtml) button.innerHTML = button.dataset.previousHtml;
+      delete button.dataset.previousHtml;
+    }
+  }
+
+  function summaryText(result) {
+    return 'Gmail sync completed: ' +
+      result.createdTickets + ' tickets created, ' +
+      result.createdMessages + ' messages added, ' +
+      result.attachments + ' attachments saved, ' +
+      result.failedThreads + ' failed threads.';
+  }
+
+  function clickRefreshButtons() {
+    document.querySelectorAll('[data-action="refresh"]').forEach(function (button) {
+      button.click();
+    });
+  }
+
+  function start() {
+    const button = document.getElementById('sync-gmail');
+    if (!button) return;
+    button.addEventListener('click', async function () {
+      setButtonBusy(button, true);
+      try {
+        const result = unwrap(await callServer('syncUiGmail'));
+        showSnack(summaryText(result));
+        clickRefreshButtons();
+      } catch (error) {
+        showSnack(error && error.message ? error.message : String(error));
+      } finally {
+        setButtonBusy(button, false);
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start);
+  } else {
+    start();
+  }
+})();
+</script>
