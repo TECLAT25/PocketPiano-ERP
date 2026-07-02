@@ -9,6 +9,7 @@ class GmailSyncEngine {
    *   gmailGateway: Object,
    *   ticketRepository: Object,
    *   messageRepository: Object,
+   *   customerRepository: Object,
    *   attachmentStore: Object,
    *   settings: Object,
    *   idGenerator: function(): string,
@@ -19,7 +20,7 @@ class GmailSyncEngine {
    */
   constructor(dependencies) {
     const required = [
-      'gmailGateway', 'ticketRepository', 'messageRepository', 'attachmentStore',
+      'gmailGateway', 'ticketRepository', 'messageRepository', 'customerRepository', 'attachmentStore',
       'settings', 'idGenerator', 'clock', 'logger', 'version'
     ];
     required.forEach(function(name) {
@@ -30,6 +31,7 @@ class GmailSyncEngine {
     this.gmail_ = dependencies.gmailGateway;
     this.tickets_ = dependencies.ticketRepository;
     this.messages_ = dependencies.messageRepository;
+    this.customers_ = dependencies.customerRepository;
     this.attachments_ = dependencies.attachmentStore;
     this.settings_ = dependencies.settings;
     this.idGenerator_ = dependencies.idGenerator;
@@ -42,7 +44,7 @@ class GmailSyncEngine {
    * Executes one bounded synchronization pass.
    * @return {{threads: number, createdTickets: number, updatedTickets: number,
    *   createdMessages: number, duplicateMessages: number, attachments: number,
-   *   failedThreads: number}}
+   *   customersUpserted: number, failedThreads: number}}
    */
   synchronize() {
     const mailbox = String(this.settings_.get('SUPPORT_EMAIL', 'support@pocketpiano.com')).toLowerCase();
@@ -59,6 +61,7 @@ class GmailSyncEngine {
       createdMessages: 0,
       duplicateMessages: 0,
       attachments: 0,
+      customersUpserted: 0,
       failedThreads: 0
     };
 
@@ -97,6 +100,16 @@ class GmailSyncEngine {
     let ticket = this.tickets_.findByThreadId(thread.id);
     const firstMessage = orderedMessages[0];
     const lastMessage = orderedMessages[orderedMessages.length - 1];
+    const customerEmail = GmailSyncEngine.customerEmail_(orderedMessages, mailbox);
+    const customerName = GmailSyncEngine.customerName_(orderedMessages, mailbox);
+    const customer = customerEmail ? this.customers_.upsertByEmail({
+      email: customerEmail,
+      name: customerName,
+      notes: 'Created or updated from Gmail thread ' + thread.id
+    }) : null;
+    if (customer) {
+      summary.customersUpserted += 1;
+    }
 
     if (!ticket) {
       ticket = this.tickets_.create({
@@ -105,7 +118,8 @@ class GmailSyncEngine {
         status: 'NEW',
         priority: 'NORMAL',
         subject: firstMessage.subject || '(no subject)',
-        customerEmail: GmailSyncEngine.customerEmail_(orderedMessages, mailbox),
+        customerId: customer ? customer.id : '',
+        customerEmail: customerEmail,
         createdAt: new Date(firstMessage.date),
         updatedAt: this.clock_(),
         lastMessageAt: new Date(lastMessage.date),
@@ -146,7 +160,8 @@ class GmailSyncEngine {
     this.tickets_.updateConversation(ticket, {
       status: GmailSyncEngine.nextStatus_(ticket.status, lastMessage.from, mailbox),
       subject: lastMessage.subject || ticket.subject || '(no subject)',
-      customerEmail: ticket.customerEmail || GmailSyncEngine.customerEmail_(orderedMessages, mailbox),
+      customerId: ticket.customerId || (customer ? customer.id : ''),
+      customerEmail: ticket.customerEmail || customerEmail,
       updatedAt: this.clock_(),
       lastMessageAt: new Date(lastMessage.date),
       driveFolderId: ticketFolderId,
@@ -178,10 +193,33 @@ class GmailSyncEngine {
     return '';
   }
 
+  /**
+   * @param {Array<Object>} messages
+   * @param {string} mailbox
+   * @return {string}
+   * @private
+   */
+  static customerName_(messages, mailbox) {
+    for (let index = 0; index < messages.length; index += 1) {
+      if (GmailSyncEngine.direction_(messages[index].from, mailbox) === 'INBOUND') {
+        return GmailSyncEngine.displayName_(messages[index].from);
+      }
+    }
+    return '';
+  }
+
   /** @param {string} value @return {Array<string>} @private */
   static addresses_(value) {
     const matches = String(value || '').toLowerCase().match(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,}/g);
     return matches || [];
+  }
+
+  /** @param {string} value @return {string} @private */
+  static displayName_(value) {
+    const raw = String(value || '').trim();
+    const email = GmailSyncEngine.addresses_(raw)[0] || '';
+    const withoutEmail = raw.replace(/<[^>]+>/g, '').replace(email, '').replace(/"/g, '').trim();
+    return withoutEmail || '';
   }
 
   /** @param {*} body @return {string} @private */
@@ -296,6 +334,7 @@ function syncGmail() {
       gmailGateway: new AppsScriptGmailGateway(),
       ticketRepository: new SheetTicketRepository(),
       messageRepository: new SheetMessageRepository(),
+      customerRepository: new SheetCustomerRepository(),
       attachmentStore: new DriveAttachmentStore(),
       settings: new GmailSyncSettings(),
       idGenerator: function() { return TicketNumberService.nextUnlocked_(); },
