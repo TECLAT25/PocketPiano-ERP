@@ -34,6 +34,10 @@
     window.setTimeout(function () { snackbar.hidden = true; }, 6000);
   }
 
+  function refreshViews() {
+    document.querySelectorAll('[data-action="refresh"]').forEach(function (button) { button.click(); });
+  }
+
   function selectedTicketId() {
     const selected = document.querySelector('[data-ticket-id].is-selected');
     if (selected && selected.dataset.ticketId) return selected.dataset.ticketId;
@@ -44,6 +48,18 @@
   function selectedValueFromChip(index) {
     const chips = document.querySelectorAll('#ticket-detail .detail-chips .chip');
     return chips[index] ? chips[index].textContent.trim().toUpperCase().replace(/ /g, '_') : '';
+  }
+
+  function detailFieldValue(label) {
+    const fields = document.querySelectorAll('#ticket-detail .detail-field');
+    for (let index = 0; index < fields.length; index += 1) {
+      const title = fields[index].querySelector('dt');
+      const value = fields[index].querySelector('dd');
+      if (title && value && title.textContent.trim().toLowerCase() === label.toLowerCase()) {
+        return value.textContent.trim();
+      }
+    }
+    return '';
   }
 
   function createSelect(name, options, currentValue, serverFunction) {
@@ -68,7 +84,7 @@
       try {
         await unwrap(await callServer(serverFunction, ticketId, select.value));
         showSnack(name + ' updated for ' + ticketId + '.');
-        document.querySelectorAll('[data-action="refresh"]').forEach(function (button) { button.click(); });
+        refreshViews();
       } catch (error) {
         showSnack(error && error.message ? error.message : String(error));
       } finally {
@@ -80,6 +96,47 @@
     return label;
   }
 
+  function createTextInput(name, value, placeholder, serverFunction) {
+    const label = document.createElement('label');
+    label.className = 'ticket-action-field ticket-action-field-wide';
+    const caption = document.createElement('span');
+    caption.textContent = name;
+    const group = document.createElement('div');
+    group.className = 'ticket-input-action';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = value || '';
+    input.placeholder = placeholder || '';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'text-button';
+    button.textContent = 'Save';
+    button.addEventListener('click', async function () {
+      const ticketId = selectedTicketId();
+      if (!ticketId) return;
+      input.disabled = true;
+      button.disabled = true;
+      try {
+        await unwrap(await callServer(serverFunction, ticketId, input.value));
+        showSnack(name + ' updated for ' + ticketId + '.');
+        refreshViews();
+      } catch (error) {
+        showSnack(error && error.message ? error.message : String(error));
+      } finally {
+        input.disabled = false;
+        button.disabled = false;
+      }
+    });
+    input.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') button.click();
+    });
+    group.appendChild(input);
+    group.appendChild(button);
+    label.appendChild(caption);
+    label.appendChild(group);
+    return label;
+  }
+
   function injectStyles() {
     if (document.getElementById('ticket-action-styles')) return;
     const style = document.createElement('style');
@@ -87,8 +144,12 @@
     style.textContent = [
       '.ticket-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }',
       '.ticket-action-field { display: grid; gap: 5px; min-width: 0; color: var(--on-surface-variant); font-size: 11px; text-transform: uppercase; }',
-      '.ticket-action-field select { width: 100%; text-transform: none; }',
-      '@media (max-width: 760px) { .ticket-actions { grid-template-columns: 1fr; } }'
+      '.ticket-action-field select, .ticket-action-field input { width: 100%; text-transform: none; }',
+      '.ticket-action-field input { min-height: 40px; padding: 0 12px; border: 1px solid var(--outline); border-radius: var(--radius-sm); color: var(--on-surface); background: var(--surface-bright); }',
+      '.ticket-action-field-wide { grid-column: span 3; }',
+      '.ticket-input-action { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }',
+      '.ticket-input-action .text-button { min-height: 40px; }',
+      '@media (max-width: 760px) { .ticket-actions { grid-template-columns: 1fr; } .ticket-action-field-wide { grid-column: span 1; } }'
     ].join('\n');
     document.head.appendChild(style);
   }
@@ -104,6 +165,8 @@
     actions.appendChild(createSelect('Status', OPTIONS.status, selectedValueFromChip(0), 'updateUiTicketStatus'));
     actions.appendChild(createSelect('Priority', OPTIONS.priority, selectedValueFromChip(1), 'updateUiTicketPriority'));
     actions.appendChild(createSelect('Category', OPTIONS.category, selectedValueFromChip(2), 'updateUiTicketCategory'));
+    actions.appendChild(createTextInput('Assigned to', detailFieldValue('Assigned To'), 'email or name', 'assignUiTicket'));
+    actions.appendChild(createTextInput('Tags', detailFieldValue('Tags'), 'tag1, tag2, tag3', 'updateUiTicketTags'));
     header.appendChild(actions);
   }
 
