@@ -1,0 +1,127 @@
+<script>
+(function () {
+  'use strict';
+
+  const OPTIONS = {
+    status: ['NEW', 'OPEN', 'PENDING_CUSTOMER', 'RESOLVED', 'CLOSED'],
+    priority: ['LOW', 'NORMAL', 'HIGH', 'CRITICAL'],
+    category: ['GENERAL', 'TECHNICAL', 'WARRANTY', 'SHIPPING', 'BILLING', 'PRODUCT', 'OTHER']
+  };
+
+  function callServer(functionName) {
+    const args = Array.prototype.slice.call(arguments, 1);
+    return new Promise(function (resolve, reject) {
+      const runner = google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(reject);
+      runner[functionName].apply(runner, args);
+    });
+  }
+
+  function unwrap(response) {
+    if (!response || response.ok !== true) {
+      const error = response && response.error ? response.error : {};
+      throw new Error(error.message || 'The server returned an invalid response.');
+    }
+    return response.data;
+  }
+
+  function showSnack(message) {
+    const snackbar = document.getElementById('snackbar');
+    if (!snackbar) return;
+    snackbar.textContent = message;
+    snackbar.hidden = false;
+    window.setTimeout(function () { snackbar.hidden = true; }, 6000);
+  }
+
+  function selectedTicketId() {
+    const selected = document.querySelector('[data-ticket-id].is-selected');
+    if (selected && selected.dataset.ticketId) return selected.dataset.ticketId;
+    const eyebrow = document.querySelector('#ticket-detail .detail-header .eyebrow');
+    return eyebrow ? eyebrow.textContent.trim() : '';
+  }
+
+  function selectedValueFromChip(index) {
+    const chips = document.querySelectorAll('#ticket-detail .detail-chips .chip');
+    return chips[index] ? chips[index].textContent.trim().toUpperCase().replace(/ /g, '_') : '';
+  }
+
+  function createSelect(name, options, currentValue, serverFunction) {
+    const label = document.createElement('label');
+    label.className = 'ticket-action-field';
+    const caption = document.createElement('span');
+    caption.textContent = name;
+    const select = document.createElement('select');
+    options.forEach(function (value) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, function (letter) {
+        return letter.toUpperCase();
+      });
+      if (value === currentValue) option.selected = true;
+      select.appendChild(option);
+    });
+    select.addEventListener('change', async function () {
+      const ticketId = selectedTicketId();
+      if (!ticketId) return;
+      select.disabled = true;
+      try {
+        await unwrap(await callServer(serverFunction, ticketId, select.value));
+        showSnack(name + ' updated for ' + ticketId + '.');
+        document.querySelectorAll('[data-action="refresh"]').forEach(function (button) { button.click(); });
+      } catch (error) {
+        showSnack(error && error.message ? error.message : String(error));
+      } finally {
+        select.disabled = false;
+      }
+    });
+    label.appendChild(caption);
+    label.appendChild(select);
+    return label;
+  }
+
+  function injectStyles() {
+    if (document.getElementById('ticket-action-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'ticket-action-styles';
+    style.textContent = [
+      '.ticket-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }',
+      '.ticket-action-field { display: grid; gap: 5px; min-width: 0; color: var(--on-surface-variant); font-size: 11px; text-transform: uppercase; }',
+      '.ticket-action-field select { width: 100%; text-transform: none; }',
+      '@media (max-width: 760px) { .ticket-actions { grid-template-columns: 1fr; } }'
+    ].join('\n');
+    document.head.appendChild(style);
+  }
+
+  function ensureTicketControls() {
+    injectStyles();
+    const header = document.querySelector('#ticket-detail .detail-header');
+    if (!header || header.querySelector('.ticket-actions')) return;
+    if (!selectedTicketId()) return;
+
+    const actions = document.createElement('div');
+    actions.className = 'ticket-actions';
+    actions.appendChild(createSelect('Status', OPTIONS.status, selectedValueFromChip(0), 'updateUiTicketStatus'));
+    actions.appendChild(createSelect('Priority', OPTIONS.priority, selectedValueFromChip(1), 'updateUiTicketPriority'));
+    actions.appendChild(createSelect('Category', OPTIONS.category, selectedValueFromChip(2), 'updateUiTicketCategory'));
+    header.appendChild(actions);
+  }
+
+  const observer = new MutationObserver(function () {
+    ensureTicketControls();
+  });
+
+  function start() {
+    const panel = document.getElementById('ticket-detail');
+    if (!panel) return;
+    observer.observe(panel, {childList: true, subtree: true});
+    ensureTicketControls();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start);
+  } else {
+    start();
+  }
+})();
+</script>
