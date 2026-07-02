@@ -22,6 +22,7 @@ class AppInstaller {
       AppInstaller.seedSettings_(spreadsheet);
       AppInstaller.ensureDriveResources_();
       AppInstaller.ensureGmailResources_();
+      AppInstaller.ensureTriggers_();
       AppInstaller.refreshDashboard_(spreadsheet);
 
       AppConfig.getProperties().setProperty(APP.PROPERTY_KEYS.INSTALLED_VERSION, APP_VERSION);
@@ -142,6 +143,12 @@ class AppInstaller {
     if (!GmailApp.getUserLabelByName(labelName)) {
       GmailApp.createLabel(labelName);
     }
+  }
+
+  /** Creates managed background triggers. @private */
+  static ensureTriggers_() {
+    TriggerManager.ensureMaintenanceTrigger();
+    TriggerManager.ensureGmailSyncTrigger();
   }
 
   /**
