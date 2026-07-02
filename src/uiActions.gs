@@ -79,3 +79,33 @@ function updateUiTicketCategory(ticketId, category) {
     return AppUtils.errorResponse(error);
   }
 }
+
+/**
+ * Assigns a ticket to a person or clears the assignee.
+ * @param {string} ticketId
+ * @param {string} assignedTo
+ * @return {{ok: boolean, data: Object}|Object}
+ */
+function assignUiTicket(ticketId, assignedTo) {
+  try {
+    const result = assignTicket(ticketId, assignedTo || '');
+    return {ok: true, data: UiSerializer.toClient(result)};
+  } catch (error) {
+    return AppUtils.errorResponse(error);
+  }
+}
+
+/**
+ * Updates comma-separated ticket tags from the UI.
+ * @param {string} ticketId
+ * @param {string} tags
+ * @return {{ok: boolean, data: Object}|Object}
+ */
+function updateUiTicketTags(ticketId, tags) {
+  try {
+    const result = updateTicketTags(ticketId, tags || '');
+    return {ok: true, data: UiSerializer.toClient(result)};
+  } catch (error) {
+    return AppUtils.errorResponse(error);
+  }
+}
