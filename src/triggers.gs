@@ -2,7 +2,8 @@
 class TriggerManager {
   /**
    * Creates one daily maintenance trigger if absent.
-   * @return {GoogleAppsScript.Script.Trigger}
+   * Returns null when the script.scriptapp scope is not authorized yet.
+   * @return {GoogleAppsScript.Script.Trigger|null}
    */
   static ensureMaintenanceTrigger() {
     return TriggerManager.ensureTimeTrigger_('scheduledMaintenance', function() {
@@ -12,7 +13,8 @@ class TriggerManager {
 
   /**
    * Creates one five-minute Gmail synchronization trigger if absent.
-   * @return {GoogleAppsScript.Script.Trigger}
+   * Returns null when the script.scriptapp scope is not authorized yet.
+   * @return {GoogleAppsScript.Script.Trigger|null}
    */
   static ensureGmailSyncTrigger() {
     return TriggerManager.ensureTimeTrigger_('syncGmail', function() {
@@ -22,25 +24,54 @@ class TriggerManager {
 
   /** Removes only triggers managed by this application. */
   static removeManagedTriggers() {
-    const managedHandlers = ['scheduledMaintenance', 'syncGmail'];
-    ScriptApp.getProjectTriggers().forEach(function(trigger) {
-      if (managedHandlers.indexOf(trigger.getHandlerFunction()) !== -1) {
-        ScriptApp.deleteTrigger(trigger);
+    try {
+      const managedHandlers = ['scheduledMaintenance', 'syncGmail'];
+      ScriptApp.getProjectTriggers().forEach(function(trigger) {
+        if (managedHandlers.indexOf(trigger.getHandlerFunction()) !== -1) {
+          ScriptApp.deleteTrigger(trigger);
+        }
+      });
+    } catch (error) {
+      if (TriggerManager.isMissingScopeError_(error)) {
+        AppLogger.warn('Managed triggers could not be removed because script.scriptapp permission is missing.', {
+          error: error.message || String(error)
+        });
+        return;
       }
-    });
+      throw error;
+    }
   }
 
   /**
    * @param {string} handler
    * @param {function(): GoogleAppsScript.Script.Trigger} factory
-   * @return {GoogleAppsScript.Script.Trigger}
+   * @return {GoogleAppsScript.Script.Trigger|null}
    * @private
    */
   static ensureTimeTrigger_(handler, factory) {
-    const existing = ScriptApp.getProjectTriggers().filter(function(trigger) {
-      return trigger.getHandlerFunction() === handler;
-    });
-    return existing.length ? existing[0] : factory();
+    try {
+      const existing = ScriptApp.getProjectTriggers().filter(function(trigger) {
+        return trigger.getHandlerFunction() === handler;
+      });
+      return existing.length ? existing[0] : factory();
+    } catch (error) {
+      if (TriggerManager.isMissingScopeError_(error)) {
+        AppLogger.warn('Trigger was not installed because script.scriptapp permission is missing.', {
+          handler: handler,
+          error: error.message || String(error)
+        });
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /** @param {*} error @return {boolean} @private */
+  static isMissingScopeError_(error) {
+    const message = error && error.message ? error.message : String(error || '');
+    return message.indexOf('script.scriptapp') !== -1 ||
+      message.indexOf('ScriptApp.getProjectTriggers') !== -1 ||
+      message.indexOf('Specified permissions are not sufficient') !== -1;
   }
 }
 
