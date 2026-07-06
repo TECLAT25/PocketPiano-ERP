@@ -1,0 +1,93 @@
+<script>
+(function () {
+  'use strict';
+
+  var queues = {
+    all: {},
+    new: {status: 'NEW'},
+    critical: {priority: 'CRITICAL'},
+    breached: {breached: true},
+    pending: {status: 'PENDING_CUSTOMER'},
+    warranty: {category: 'WARRANTY'}
+  };
+
+  function addCss() {
+    if (document.getElementById('workbench-css')) return;
+    var css = '.support-workbench{display:grid;grid-template-columns:220px minmax(300px,420px) minmax(420px,1fr);gap:14px;height:calc(100vh - 104px)}' +
+      '.queue-panel,.ticket-list-panel,.support-detail{min-height:0;overflow:auto}' +
+      '.queue-list{display:grid;gap:8px;margin-bottom:18px}' +
+      '.queue-item{display:flex;justify-content:space-between;align-items:center;min-height:42px;padding:0 12px;border:1px solid var(--outline-variant);border-radius:12px;background:var(--surface-bright);color:var(--on-surface);cursor:pointer}' +
+      '.queue-item.is-active{background:var(--primary-container);color:var(--on-primary-container);font-weight:800}' +
+      '.compact-filters{display:grid;grid-template-columns:1fr;gap:10px}' +
+      '.ticket-list-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px}' +
+      '.muted{color:var(--on-surface-variant)}' +
+      '.ticket-card-table thead{display:none}' +
+      '.ticket-card-table table,.ticket-card-table tbody,.ticket-card-table tr,.ticket-card-table td{display:block}' +
+      '.ticket-card-table tbody{display:grid;gap:10px}' +
+      '.ticket-card-table tr{padding:12px;border:1px solid var(--outline-variant);border-radius:12px;background:var(--surface-bright);cursor:pointer}' +
+      '.ticket-card-table tr.is-selected{border-color:var(--primary);background:var(--primary-container)}' +
+      '.ticket-card-table td{border:0!important;padding:0!important}' +
+      '.ticket-card-table td:nth-child(1){font-weight:800;margin-bottom:8px}' +
+      '.ticket-card-table td:nth-child(2),.ticket-card-table td:nth-child(3){display:inline-flex;margin:0 6px 8px 0;padding:3px 8px!important;border-radius:14px;background:var(--surface-container-high);font-size:11px;text-transform:uppercase}' +
+      '@media(max-width:820px){.support-workbench{grid-template-columns:1fr;height:auto}}';
+    var style = document.createElement('style');
+    style.id = 'workbench-css';
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+
+  function normalize(value) {
+    return String(value || '').trim().toUpperCase().replace(/ /g, '_');
+  }
+
+  function setFilter(id, value) {
+    var control = document.getElementById(id);
+    if (!control) return;
+    if (control.type === 'checkbox') control.checked = Boolean(value);
+    else control.value = value || '';
+    control.dispatchEvent(new Event('change', {bubbles: true}));
+  }
+
+  function applyQueue(name) {
+    var criteria = queues[name] || {};
+    document.querySelectorAll('.queue-item').forEach(function (button) {
+      button.classList.toggle('is-active', button.dataset.queue === name);
+    });
+    setFilter('filter-status', criteria.status || '');
+    setFilter('filter-priority', criteria.priority || '');
+    setFilter('filter-category', criteria.category || '');
+    setFilter('filter-breached', Boolean(criteria.breached));
+  }
+
+  function bindQueues() {
+    document.querySelectorAll('.queue-item').forEach(function (button) {
+      if (button.dataset.bound === 'true') return;
+      button.dataset.bound = 'true';
+      button.addEventListener('click', function () {
+        applyQueue(button.dataset.queue || 'all');
+      });
+    });
+  }
+
+  function updateCounts() {
+    var rows = Array.prototype.slice.call(document.querySelectorAll('#ticket-table-body tr'));
+    document.querySelector('.queue-item[data-queue="all"] strong').textContent = String(rows.length);
+    document.querySelector('.queue-item[data-queue="new"] strong').textContent = String(rows.filter(function (row) { return normalize(row.children[1] && row.children[1].textContent) === 'NEW'; }).length);
+    document.querySelector('.queue-item[data-queue="critical"] strong').textContent = String(rows.filter(function (row) { return normalize(row.children[2] && row.children[2].textContent) === 'CRITICAL'; }).length);
+    document.querySelector('.queue-item[data-queue="pending"] strong').textContent = String(rows.filter(function (row) { return normalize(row.children[1] && row.children[1].textContent) === 'PENDING_CUSTOMER'; }).length);
+  }
+
+  function start() {
+    addCss();
+    bindQueues();
+    updateCounts();
+    new MutationObserver(function () {
+      bindQueues();
+      updateCounts();
+    }).observe(document.body, {childList: true, subtree: true});
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();
+</script>
