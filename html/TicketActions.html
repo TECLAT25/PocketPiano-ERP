@@ -105,11 +105,11 @@
     group.className = 'ticket-input-action';
     const input = document.createElement('input');
     input.type = 'text';
-    input.value = value || '';
+    input.value = value === '—' ? '' : (value || '');
     input.placeholder = placeholder || '';
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'text-button';
+    button.className = 'tonal-button';
     button.textContent = 'Save';
     button.addEventListener('click', async function () {
       const ticketId = selectedTicketId();
@@ -142,14 +142,15 @@
     const style = document.createElement('style');
     style.id = 'ticket-action-styles';
     style.textContent = [
-      '.ticket-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }',
-      '.ticket-action-field { display: grid; gap: 5px; min-width: 0; color: var(--on-surface-variant); font-size: 11px; text-transform: uppercase; }',
-      '.ticket-action-field select, .ticket-action-field input { width: 100%; text-transform: none; }',
-      '.ticket-action-field input { min-height: 40px; padding: 0 12px; border: 1px solid var(--outline); border-radius: var(--radius-sm); color: var(--on-surface); background: var(--surface-bright); }',
+      '.ticket-actions { display: grid; grid-template-columns: repeat(3, minmax(170px, 1fr)); gap: 12px; margin-top: 16px; padding: 14px; border-radius: 16px; background: var(--surface-container); }',
+      '.ticket-action-field { display: grid; gap: 7px; min-width: 0; color: var(--on-surface-variant); font-size: 12px; font-weight: 800; text-transform: uppercase; }',
+      '.ticket-action-field select, .ticket-action-field input { width: 100%; min-height: 46px; border: 1px solid var(--outline); border-radius: 12px; color: var(--on-surface); background: var(--surface-bright); font: inherit; }',
+      '.ticket-action-field select { padding: 0 12px; }',
+      '.ticket-action-field input { padding: 0 14px; }',
       '.ticket-action-field-wide { grid-column: span 3; }',
-      '.ticket-input-action { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }',
-      '.ticket-input-action .text-button { min-height: 40px; }',
-      '@media (max-width: 760px) { .ticket-actions { grid-template-columns: 1fr; } .ticket-action-field-wide { grid-column: span 1; } }'
+      '.ticket-input-action { display: grid; grid-template-columns: minmax(0, 1fr) 96px; gap: 8px; }',
+      '.ticket-input-action .tonal-button { min-height: 46px; justify-content: center; }',
+      '@media (max-width: 900px) { .ticket-actions { grid-template-columns: 1fr; } .ticket-action-field-wide { grid-column: span 1; } }'
     ].join('\n');
     document.head.appendChild(style);
   }
@@ -165,7 +166,7 @@
     actions.appendChild(createSelect('Status', OPTIONS.status, selectedValueFromChip(0), 'updateUiTicketStatus'));
     actions.appendChild(createSelect('Priority', OPTIONS.priority, selectedValueFromChip(1), 'updateUiTicketPriority'));
     actions.appendChild(createSelect('Category', OPTIONS.category, selectedValueFromChip(2), 'updateUiTicketCategory'));
-    actions.appendChild(createTextInput('Assigned to', detailFieldValue('Assigned To'), 'email or name', 'assignUiTicket'));
+    actions.appendChild(createTextInput('Assigned to', detailFieldValue('Assignee'), 'email or name', 'assignUiTicket'));
     actions.appendChild(createTextInput('Tags', detailFieldValue('Tags'), 'tag1, tag2, tag3', 'updateUiTicketTags'));
     header.appendChild(actions);
   }
