@@ -1,5 +1,12 @@
 **/*.gs
+PocketPiano-ERP/**
+tests/**
 node_modules/**
 .git/**
 .gitignore
 .clasprc.json
+README.md
+docs/**
+package.json
+package-lock.json
+deploy.bat
