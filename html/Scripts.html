@@ -8,6 +8,7 @@
     filtersReady: false,
     selectedTicketId: '',
     selectedDetail: null,
+    sort: 'date_desc',
     criteria: {limit: 100}
   };
 
@@ -27,9 +28,7 @@
   function callServer(functionName) {
     const args = Array.prototype.slice.call(arguments, 1);
     return new Promise(function (resolve, reject) {
-      const runner = google.script.run
-        .withSuccessHandler(resolve)
-        .withFailureHandler(reject);
+      const runner = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
       runner[functionName].apply(runner, args);
     });
   }
@@ -48,14 +47,13 @@
       const data = unwrap(await callServer('getUiState', state.criteria));
       state.tickets = data.tickets.items || [];
       renderMetrics(data.metrics);
-      renderRecentTickets(state.tickets.slice(0, 6));
-      renderTicketList(data.tickets);
+      renderRecentTickets(sortedTickets(state.tickets).slice(0, 6));
+      renderTicketList({items: sortedTickets(data.tickets.items || []), total: data.tickets.total});
       if (!state.filtersReady) {
         populateFilters(data.filters);
         state.filtersReady = true;
       }
-      if (state.selectedTicketId &&
-          !state.tickets.some(function (ticket) { return ticket.id === state.selectedTicketId; })) {
+      if (state.selectedTicketId && !state.tickets.some(function (ticket) { return ticket.id === state.selectedTicketId; })) {
         state.selectedTicketId = '';
         state.selectedDetail = null;
         renderDetail(null);
@@ -65,6 +63,70 @@
     } finally {
       setLoading(false);
     }
+  }
+
+  function sortedTickets(tickets) {
+    const copy = (tickets || []).slice();
+    copy.sort(function (left, right) {
+      if (state.sort === 'ticket_asc' || state.sort === 'ticket_desc') {
+        const comparison = compareTicketIds(left.id, right.id);
+        return state.sort === 'ticket_asc' ? comparison : -comparison;
+      }
+      const leftTime = dateValue(left.createdAt || left.updatedAt || left.lastMessageAt);
+      const rightTime = dateValue(right.createdAt || right.updatedAt || right.lastMessageAt);
+      return state.sort === 'date_asc' ? leftTime - rightTime : rightTime - leftTime;
+    });
+    return copy;
+  }
+
+  function dateValue(value) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+  }
+
+  function compareTicketIds(left, right) {
+    const leftNumber = ticketNumber(left);
+    const rightNumber = ticketNumber(right);
+    if (leftNumber !== rightNumber) return leftNumber - rightNumber;
+    return String(left || '').localeCompare(String(right || ''));
+  }
+
+  function ticketNumber(value) {
+    const matches = String(value || '').match(/\d+/g);
+    return matches && matches.length ? Number(matches[matches.length - 1]) : 0;
+  }
+
+  function renderSortBar() {
+    const panel = document.querySelector('.ticket-list-panel');
+    if (!panel || panel.querySelector('.ticket-sortbar')) return;
+    const header = panel.querySelector('.ticket-list-header');
+    if (header) header.hidden = true;
+
+    const bar = element('div', 'ticket-sortbar');
+    [
+      ['date_desc', 'Fecha ↓'],
+      ['date_asc', 'Fecha ↑'],
+      ['ticket_desc', 'Ticket ↓'],
+      ['ticket_asc', 'Ticket ↑']
+    ].forEach(function (item) {
+      const button = element('button', 'sort-button', item[1]);
+      button.type = 'button';
+      button.dataset.sort = item[0];
+      button.addEventListener('click', function () {
+        state.sort = item[0];
+        updateSortButtons();
+        renderTicketList({items: sortedTickets(state.tickets), total: state.tickets.length});
+      });
+      bar.appendChild(button);
+    });
+    panel.insertBefore(bar, header || panel.firstChild);
+    updateSortButtons();
+  }
+
+  function updateSortButtons() {
+    document.querySelectorAll('.sort-button').forEach(function (button) {
+      button.classList.toggle('is-active', button.dataset.sort === state.sort);
+    });
   }
 
   function renderMetrics(metrics) {
@@ -119,6 +181,7 @@
   }
 
   function renderTicketList(page) {
+    renderSortBar();
     const body = byId('ticket-table-body');
     body.replaceChildren();
     byId('ticket-count').textContent = page.total + (page.total === 1 ? ' ticket' : ' tickets');
@@ -150,7 +213,7 @@
       priority.appendChild(chip(ticket.priority, toneForPriority(ticket.priority)));
       row.appendChild(priority);
       row.appendChild(element('td', '', ticket.customerEmail || '—'));
-      row.appendChild(element('td', '', formatDate(ticket.updatedAt)));
+      row.appendChild(element('td', '', formatDate(ticket.createdAt || ticket.updatedAt)));
       body.appendChild(row);
     });
   }
@@ -244,11 +307,7 @@
     item.appendChild(subject);
 
     const meta = element('dl', 'email-meta');
-    [
-      ['From', message.from || '—'],
-      ['To', message.to || '—'],
-      ['Cc', message.cc || '—']
-    ].forEach(function (field) {
+    [['From', message.from || '—'], ['To', message.to || '—'], ['Cc', message.cc || '—']].forEach(function (field) {
       const wrapper = element('div');
       wrapper.appendChild(element('dt', '', field[0]));
       wrapper.appendChild(element('dd', '', field[1]));
@@ -263,9 +322,7 @@
     if (message.attachmentCount > 0) {
       const attachment = element('span', 'attachment email-attachment');
       attachment.appendChild(icon('attach_file'));
-      attachment.appendChild(document.createTextNode(
-        message.attachmentCount + (message.attachmentCount === 1 ? ' attachment' : ' attachments')
-      ));
+      attachment.appendChild(document.createTextNode(message.attachmentCount + (message.attachmentCount === 1 ? ' attachment' : ' attachments')));
       item.appendChild(attachment);
     }
     return item;
@@ -293,15 +350,7 @@
     view.appendChild(profile);
 
     const fields = element('dl', 'customer-fields');
-    [
-      ['Email', customer.email || '—'],
-      ['Phone', customer.phone || '—'],
-      ['Locale', customer.locale || '—'],
-      ['Company', customer.company || '—'],
-      ['Created', formatDate(customer.createdAt)],
-      ['Updated', formatDate(customer.updatedAt)],
-      ['Notes', customer.notes || '—']
-    ].forEach(function (field) {
+    [['Email', customer.email || '—'], ['Phone', customer.phone || '—'], ['Locale', customer.locale || '—'], ['Company', customer.company || '—'], ['Created', formatDate(customer.createdAt)], ['Updated', formatDate(customer.updatedAt)], ['Notes', customer.notes || '—']].forEach(function (field) {
       const wrapper = element('div', 'detail-field');
       wrapper.appendChild(element('dt', '', field[0]));
       wrapper.appendChild(element('dd', '', field[1]));
@@ -353,10 +402,7 @@
     if (!value) return '—';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '—';
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: 'medium',
-      timeStyle: 'short'
-    }).format(date);
+    return new Intl.DateTimeFormat(undefined, {dateStyle: 'medium', timeStyle: 'short'}).format(date);
   }
 
   function navigate(view) {
@@ -396,16 +442,11 @@
   }
 
   function setTheme(theme) {
-    if (theme === 'system') {
-      document.documentElement.removeAttribute('data-theme');
-    } else {
-      document.documentElement.dataset.theme = theme;
-    }
+    if (theme === 'system') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.dataset.theme = theme;
     localStorage.setItem('pocketpiano-theme', theme);
-    const dark = theme === 'dark' ||
-      (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    byId('theme-toggle').querySelector('.material-symbols-rounded').textContent =
-      dark ? 'light_mode' : 'dark_mode';
+    const dark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    byId('theme-toggle').querySelector('.material-symbols-rounded').textContent = dark ? 'light_mode' : 'dark_mode';
   }
 
   let searchTimer;
@@ -430,8 +471,7 @@
     button.addEventListener('click', loadState);
   });
   byId('theme-toggle').addEventListener('click', function () {
-    const current = document.documentElement.dataset.theme ||
-      (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    const current = document.documentElement.dataset.theme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     setTheme(current === 'dark' ? 'light' : 'dark');
   });
 
