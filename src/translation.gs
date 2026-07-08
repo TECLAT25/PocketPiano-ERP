@@ -1,7 +1,7 @@
 /** Google Cloud Translation integration for support conversations. */
 class TranslationService {
   /**
-   * Translates a batch of UI messages to Spanish, using a persistent script cache.
+   * Translates a batch of UI messages to Spanish. Existing sheet translations are reused.
    * @param {Array<Object>} messages
    * @return {Array<Object>}
    */
@@ -10,20 +10,28 @@ class TranslationService {
     if (!items.length) return [];
     return items.map(function(message) {
       const text = String(message.body || '');
-      if (!text.trim()) {
-        return Object.assign({}, message, {translatedBody: '', detectedLanguage: '', translated: false, cached: false});
+      const storedTranslation = String(message.translatedBodyEs || '');
+      const storedLanguage = String(message.originalLanguage || '');
+      if (storedTranslation) {
+        return Object.assign({}, message, {
+          translatedBody: storedTranslation,
+          detectedLanguage: storedLanguage,
+          translated: storedLanguage.toLowerCase() !== 'es',
+          cached: true
+        });
       }
-      const cacheKey = TranslationService.translationCacheKey_(message, text);
-      const cached = TranslationService.getCachedTranslation_(cacheKey);
-      if (cached) return Object.assign({}, message, cached, {cached: true});
+      if (!text.trim()) {
+        return Object.assign({}, message, {translatedBody: '', detectedLanguage: storedLanguage, translated: false, cached: false});
+      }
       const translated = TranslationService.translateText_(text);
-      const result = {
+      return Object.assign({}, message, {
         translatedBody: translated.text,
+        translatedBodyEs: translated.text,
         detectedLanguage: translated.detectedLanguage,
-        translated: translated.detectedLanguage && translated.detectedLanguage.toLowerCase() !== 'es'
-      };
-      TranslationService.putCachedTranslation_(cacheKey, result);
-      return Object.assign({}, message, result, {cached: false});
+        originalLanguage: translated.detectedLanguage,
+        translated: translated.detectedLanguage && translated.detectedLanguage.toLowerCase() !== 'es',
+        cached: false
+      });
     });
   }
 
@@ -163,41 +171,6 @@ class TranslationService {
       throw new AppError((parsed.error_description || parsed.error || 'Could not obtain Google Cloud access token.'), 'GOOGLE_TOKEN_REQUEST_FAILED', {status: status});
     }
     return parsed.access_token;
-  }
-
-  /**
-   * Creates a short Script Properties-safe key.
-   * @param {Object} message
-   * @param {string} text
-   * @return {string}
-   * @private
-   */
-  static translationCacheKey_(message, text) {
-    const seed = String(message.id || message.gmailMessageId || message.messageId || '') + '\n' + text;
-    const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, seed)
-      .map(function(byte) { return ('0' + (byte & 0xFF).toString(16)).slice(-2); })
-      .join('');
-    return 'TR_ES_' + digest;
-  }
-
-  /** @param {string} key @return {Object|null} @private */
-  static getCachedTranslation_(key) {
-    if (!key || key.length > 250) return null;
-    const value = AppConfig.getProperties().getProperty(key);
-    if (!value) return null;
-    try {
-      return JSON.parse(value);
-    } catch (error) {
-      AppConfig.getProperties().deleteProperty(key);
-      return null;
-    }
-  }
-
-  /** @param {string} key @param {Object} value @private */
-  static putCachedTranslation_(key, value) {
-    if (!key || key.length > 250) return;
-    const text = JSON.stringify(value);
-    if (text.length < 8500) AppConfig.getProperties().setProperty(key, text);
   }
 
   /** @param {string} text @return {string} @private */
