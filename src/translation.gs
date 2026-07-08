@@ -35,9 +35,7 @@ class TranslationService {
    */
   static saveServiceAccount(jsonText) {
     const credentials = TranslationService.parseServiceAccount_(jsonText);
-    const properties = AppConfig.getProperties();
-    properties.setProperty('GOOGLE_CLOUD_SERVICE_ACCOUNT_JSON', JSON.stringify(credentials));
-    CacheService.getScriptCache().remove('google_cloud_translate_token');
+    AppConfig.getProperties().setProperty('GOOGLE_CLOUD_SERVICE_ACCOUNT_JSON', JSON.stringify(credentials));
     return {ok: true, clientEmail: credentials.client_email, projectId: credentials.project_id};
   }
 
@@ -135,10 +133,6 @@ class TranslationService {
 
   /** @param {Object} serviceAccount @return {string} @private */
   static getAccessToken_(serviceAccount) {
-    const cache = CacheService.getScriptCache();
-    const cached = cache.get('google_cloud_translate_token');
-    if (cached) return cached;
-
     const now = Math.floor(Date.now() / 1000);
     const header = {alg: 'RS256', typ: 'JWT'};
     const claim = {
@@ -168,7 +162,6 @@ class TranslationService {
     if (status < 200 || status >= 300 || !parsed.access_token) {
       throw new AppError((parsed.error_description || parsed.error || 'Could not obtain Google Cloud access token.'), 'GOOGLE_TOKEN_REQUEST_FAILED', {status: status});
     }
-    cache.put('google_cloud_translate_token', parsed.access_token, 3300);
     return parsed.access_token;
   }
 
@@ -190,13 +183,12 @@ class TranslationService {
   /** @param {string} key @return {Object|null} @private */
   static getCachedTranslation_(key) {
     if (!key || key.length > 250) return null;
-    const properties = AppConfig.getProperties();
-    const value = properties.getProperty(key);
+    const value = AppConfig.getProperties().getProperty(key);
     if (!value) return null;
     try {
       return JSON.parse(value);
     } catch (error) {
-      properties.deleteProperty(key);
+      AppConfig.getProperties().deleteProperty(key);
       return null;
     }
   }
