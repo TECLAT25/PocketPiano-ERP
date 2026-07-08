@@ -1,7 +1,7 @@
 /** Immutable application constants. @const */
 const APP = Object.freeze({
   NAME: 'PocketPiano ERP',
-  VERSION: '2.1.0',
+  VERSION: '2.2.0',
   LOCK_TIMEOUT_MS: 30000,
   LOG_RETENTION_DAYS: 90,
   PROPERTY_KEYS: Object.freeze({
