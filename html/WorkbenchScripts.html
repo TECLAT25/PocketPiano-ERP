@@ -36,11 +36,13 @@
       '.compact-filters label{display:grid!important;gap:2px!important;font-size:9px!important;text-transform:uppercase!important;font-weight:800!important;color:var(--on-surface-variant)!important}' +
       '.compact-filters select{min-height:26px!important;border-radius:8px!important;border:1px solid var(--outline-variant)!important;background:var(--surface-bright)!important;color:var(--on-surface)!important;font-size:10px!important;padding:0 6px!important}' +
       '.breach-filter{display:flex!important;align-items:center!important;gap:5px!important;min-height:26px!important}' +
-      '.ticket-list-header{display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:4px}' +
-      '.ticket-list-header h1{font-size:17px!important;margin:0!important}' +
+      '.ticket-list-header{display:none!important}' +
+      '.ticket-sortbar{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:5px!important;margin:0 0 6px!important;padding:0 0 6px!important;border-bottom:1px solid var(--outline-variant)!important}' +
+      '.sort-button{min-height:28px!important;border:1px solid var(--outline-variant)!important;border-radius:9px!important;background:var(--surface-bright)!important;color:var(--on-surface)!important;cursor:pointer!important;font-size:11px!important;font-weight:700!important}' +
+      '.sort-button.is-active{background:var(--primary-container)!important;color:var(--on-primary-container)!important;border-color:var(--primary)!important}' +
       '.ticket-list-header .eyebrow,.muted{font-size:10px!important;color:var(--on-surface-variant)}' +
       '.count-badge{font-size:10px!important;padding:3px 7px!important}' +
-      '.ticket-list-tools{margin-bottom:4px!important}' +
+      '.ticket-list-tools{display:none!important}' +
       '.ticket-card-table thead{display:none}' +
       '.ticket-card-table table,.ticket-card-table tbody,.ticket-card-table tr,.ticket-card-table td{display:block}' +
       '.ticket-card-table tbody{display:grid;gap:5px}' +
@@ -143,8 +145,6 @@
   function forceWorkspace() {
     var button = document.querySelector('[data-view="tickets"]');
     if (button) button.click();
-    var title = document.getElementById('tickets-title');
-    if (title) title.textContent = 'Support Dashboard';
   }
 
   function scheduleUpdate() {
