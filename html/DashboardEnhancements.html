@@ -1,0 +1,190 @@
+<script>
+(function () {
+  'use strict';
+
+  var originalBodiesByTicket = {};
+  var translatedBodiesByTicket = {};
+  var translationModeByTicket = {};
+
+  function css() {
+    if (document.getElementById('dashboard-enhancements-css')) return;
+    var style = document.createElement('style');
+    style.id = 'dashboard-enhancements-css';
+    style.textContent = '.ticket-sortbar{grid-template-columns:repeat(2,minmax(0,1fr))!important}' +
+      '.ticket-sortbar .sort-button:nth-child(n+3){display:none!important}' +
+      '.translate-toggle{display:inline-flex;align-items:center;gap:5px;margin-left:6px;min-height:24px;border:1px solid var(--outline-variant);border-radius:14px;background:var(--surface-bright);color:var(--on-surface);cursor:pointer;font-size:10px;font-weight:800;padding:0 9px}' +
+      '.translate-toggle.is-active{background:var(--primary-container);color:var(--on-primary-container);border-color:var(--primary)}' +
+      '.translate-toggle[disabled]{opacity:.6;cursor:wait}' +
+      '.email-body.is-translated::before{content:"Traducido al español";display:block;margin-bottom:6px;font-size:10px;font-weight:800;text-transform:uppercase;color:var(--primary)}';
+    document.head.appendChild(style);
+  }
+
+  function ticketId() {
+    var eyebrow = document.querySelector('#ticket-detail .detail-header .eyebrow');
+    return eyebrow ? eyebrow.textContent.trim() : '';
+  }
+
+  function callServer(name) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    return new Promise(function (resolve, reject) {
+      var runner = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
+      runner[name].apply(runner, args);
+    });
+  }
+
+  function unwrap(response) {
+    if (!response || response.ok !== true) {
+      throw new Error((response && response.error && response.error.message) || 'Server request failed.');
+    }
+    return response.data;
+  }
+
+  function toast(message) {
+    var snackbar = document.getElementById('snackbar');
+    if (!snackbar) return;
+    snackbar.textContent = message;
+    snackbar.hidden = false;
+    window.setTimeout(function () { snackbar.hidden = true; }, 6000);
+  }
+
+  function patchSortbar() {
+    var bar = document.querySelector('.ticket-sortbar');
+    if (!bar || bar.dataset.compactSort === 'true') return;
+    bar.dataset.compactSort = 'true';
+    bar.replaceChildren();
+    [
+      {kind: 'date', label: 'Fecha', value: 'date_desc', next: {'date_desc': 'date_asc', 'date_asc': 'date_desc'}},
+      {kind: 'ticket', label: 'Ticket', value: 'ticket_desc', next: {'ticket_desc': 'ticket_asc', 'ticket_asc': 'ticket_desc'}}
+    ].forEach(function (config) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'sort-button';
+      button.dataset.kind = config.kind;
+      button.dataset.value = config.value;
+      button.textContent = config.label + ' ↓';
+      button.addEventListener('click', function () {
+        var current = button.dataset.value;
+        button.dataset.value = config.next[current] || config.value;
+        document.querySelectorAll('.sort-button[data-kind]').forEach(function (node) {
+          node.classList.remove('is-active');
+          if (node !== button) node.textContent = node.dataset.kind === 'date' ? 'Fecha' : 'Ticket';
+        });
+        button.classList.add('is-active');
+        button.textContent = config.label + (button.dataset.value.indexOf('_asc') !== -1 ? ' ↑' : ' ↓');
+        emulateLegacySort(button.dataset.value);
+      });
+      bar.appendChild(button);
+    });
+    var first = bar.querySelector('.sort-button[data-kind="date"]');
+    if (first) {
+      first.classList.add('is-active');
+      first.textContent = 'Fecha ↓';
+    }
+  }
+
+  function emulateLegacySort(value) {
+    var legacy = document.createElement('button');
+    legacy.dataset.sort = value;
+    legacy.style.display = 'none';
+    legacy.className = 'sort-button';
+    document.body.appendChild(legacy);
+    // The main script listens only on its own buttons. Re-sort locally instead.
+    sortVisibleRows(value);
+    legacy.remove();
+  }
+
+  function sortVisibleRows(value) {
+    var body = document.getElementById('ticket-table-body');
+    if (!body) return;
+    var rows = Array.prototype.slice.call(body.querySelectorAll('tr'));
+    rows.sort(function (a, b) {
+      if (value.indexOf('ticket_') === 0) {
+        var diff = numberFromTicket(a.dataset.ticketId) - numberFromTicket(b.dataset.ticketId);
+        return value === 'ticket_asc' ? diff : -diff;
+      }
+      var ad = Date.parse(a.children[4] ? a.children[4].textContent : '') || 0;
+      var bd = Date.parse(b.children[4] ? b.children[4].textContent : '') || 0;
+      return value === 'date_asc' ? ad - bd : bd - ad;
+    });
+    rows.forEach(function (row) { body.appendChild(row); });
+  }
+
+  function numberFromTicket(value) {
+    var matches = String(value || '').match(/\d+/g);
+    return matches && matches.length ? Number(matches[matches.length - 1]) : 0;
+  }
+
+  function ensureTranslateButton() {
+    var header = document.querySelector('#ticket-detail .detail-header');
+    var id = ticketId();
+    if (!header || !id || header.querySelector('.translate-toggle')) return;
+
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'translate-toggle';
+    button.textContent = translationModeByTicket[id] === 'es' ? '🌐 Español' : '🌐 Original';
+    if (translationModeByTicket[id] === 'es') button.classList.add('is-active');
+    button.addEventListener('click', function () { toggleTranslation(button); });
+    header.appendChild(button);
+  }
+
+  function rememberOriginalBodies(id) {
+    if (originalBodiesByTicket[id]) return;
+    originalBodiesByTicket[id] = Array.prototype.slice.call(document.querySelectorAll('#ticket-detail .email-body')).map(function (node) {
+      return node.textContent || '';
+    });
+  }
+
+  async function toggleTranslation(button) {
+    var id = ticketId();
+    if (!id) return;
+    rememberOriginalBodies(id);
+    if (translationModeByTicket[id] === 'es') {
+      applyBodies(id, originalBodiesByTicket[id], false);
+      translationModeByTicket[id] = 'original';
+      button.textContent = '🌐 Original';
+      button.classList.remove('is-active');
+      return;
+    }
+    button.disabled = true;
+    button.textContent = 'Traduciendo…';
+    try {
+      if (!translatedBodiesByTicket[id]) {
+        var data = unwrap(await callServer('translateUiTicketToSpanish', id));
+        translatedBodiesByTicket[id] = (data.messages || []).map(function (message) {
+          return message.translatedBody || message.body || '';
+        });
+      }
+      applyBodies(id, translatedBodiesByTicket[id], true);
+      translationModeByTicket[id] = 'es';
+      button.textContent = '🌐 Español';
+      button.classList.add('is-active');
+    } catch (error) {
+      toast(error.message || String(error));
+      button.textContent = '🌐 Original';
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function applyBodies(id, bodies, translated) {
+    Array.prototype.slice.call(document.querySelectorAll('#ticket-detail .email-body')).forEach(function (node, index) {
+      node.textContent = bodies[index] || '';
+      node.classList.toggle('is-translated', Boolean(translated));
+    });
+  }
+
+  function start() {
+    css();
+    new MutationObserver(function () {
+      patchSortbar();
+      ensureTranslateButton();
+    }).observe(document.body, {childList: true, subtree: true});
+    patchSortbar();
+    ensureTranslateButton();
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();
+</script>
