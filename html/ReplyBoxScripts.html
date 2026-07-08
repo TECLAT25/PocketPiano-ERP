@@ -6,11 +6,14 @@
     if (document.getElementById('reply-box-css')) return;
     var style = document.createElement('style');
     style.id = 'reply-box-css';
-    style.textContent = '.reply-box{margin:16px 20px 20px;padding:14px;border:1px solid var(--outline-variant);border-radius:14px;background:var(--surface-container)}' +
-      '.reply-box h3{margin:0 0 10px}' +
-      '.reply-toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}' +
+    style.textContent = '.reply-box{margin:0;padding:10px 12px;border-top:1px solid var(--outline-variant);background:var(--surface-container);max-height:48px;overflow:hidden;transition:max-height .18s ease}' +
+      '.reply-box.is-open{max-height:260px;overflow:auto}' +
+      '.reply-box-header{display:flex;align-items:center;justify-content:space-between;gap:12px}' +
+      '.reply-box h3{margin:0;font-size:15px}' +
+      '.reply-toggle{border:1px solid var(--outline-variant);border-radius:16px;background:var(--surface-bright);padding:5px 10px;cursor:pointer;font-size:12px}' +
+      '.reply-toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}' +
       '.reply-chip{border:1px solid var(--outline-variant);border-radius:16px;background:var(--surface-bright);padding:6px 10px;cursor:pointer;font-size:12px}' +
-      '.reply-box textarea{width:100%;min-height:140px;resize:vertical;border:1px solid var(--outline-variant);border-radius:12px;padding:12px;background:var(--surface-bright);color:var(--on-surface);font:inherit}' +
+      '.reply-box textarea{width:100%;min-height:96px;resize:vertical;border:1px solid var(--outline-variant);border-radius:12px;padding:12px;background:var(--surface-bright);color:var(--on-surface);font:inherit}' +
       '.reply-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}';
     document.head.appendChild(style);
   }
@@ -18,16 +21,6 @@
   function ticketId() {
     var eyebrow = document.querySelector('#ticket-detail .detail-header .eyebrow');
     return eyebrow ? eyebrow.textContent.trim() : '';
-  }
-
-  function customerEmail() {
-    var fields = document.querySelectorAll('#ticket-detail .detail-field');
-    for (var i = 0; i < fields.length; i += 1) {
-      var dt = fields[i].querySelector('dt');
-      var dd = fields[i].querySelector('dd');
-      if (dt && dd && dt.textContent.trim().toLowerCase() === 'customer') return dd.textContent.trim();
-    }
-    return '';
   }
 
   function insert(textarea, value) {
@@ -61,13 +54,19 @@
 
     var box = document.createElement('section');
     box.className = 'reply-box';
-    box.innerHTML = '<h3>Quick reply</h3>' +
+    box.innerHTML = '<div class="reply-box-header"><h3>Quick reply</h3><button class="reply-toggle" type="button">Open reply editor</button></div>' +
       '<div class="reply-toolbar"></div>' +
       '<textarea placeholder="Write the response draft here..."></textarea>' +
       '<div class="reply-actions"><button class="text-button" type="button" data-reply-clear>Clear</button><button class="tonal-button" type="button" data-reply-draft>Create Gmail draft</button></div>';
 
     var toolbar = box.querySelector('.reply-toolbar');
     var textarea = box.querySelector('textarea');
+    var toggle = box.querySelector('.reply-toggle');
+    toggle.addEventListener('click', function () {
+      box.classList.toggle('is-open');
+      toggle.textContent = box.classList.contains('is-open') ? 'Hide reply editor' : 'Open reply editor';
+    });
+
     [
       ['Greeting', 'Hola,\n\nGracias por contactar con PocketPiano.\n\n'],
       ['Ask serial', 'Para poder ayudarte mejor, indícanos el número de serie del PocketPiano y adjunta una foto o vídeo donde se vea el problema.\n\n'],
@@ -78,7 +77,10 @@
       button.type = 'button';
       button.className = 'reply-chip';
       button.textContent = item[0];
-      button.addEventListener('click', function () { insert(textarea, item[1]); });
+      button.addEventListener('click', function () {
+        if (!box.classList.contains('is-open')) toggle.click();
+        insert(textarea, item[1]);
+      });
       toolbar.appendChild(button);
     });
 
